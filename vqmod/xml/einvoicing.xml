@@ -1,0 +1,158 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<modification>
+	<id>einvoicing_modulo</id>
+	<version>1.0.0</version>
+	<vqmver>2.5.1</vqmver>
+	<author>InvoiceFlash</author>
+
+	<!-- Modulo eInvoicing, independiente: solo se ancla al nucleo de InvoiceFlash 0.0.17 o posterior.
+	     No depende de Facturae, VeriFactu ni TicketBAI y puede convivir con ellos. -->
+
+	<!-- Ventas > Factura electronica + autoinstalacion de la tabla einvoicing_invoice y de los
+	     permisos del grupo 1. -->
+	<file name="admin/controller/common/header.php">
+		<operation error="skip">
+			<search position="before"><![CDATA[if ($sales) {]]></search>
+			<add><![CDATA[
+			// Factura electronica EN 16931 (modulo eInvoicing): autoinstalacion idempotente
+			try {
+				$this->load->model('einvoicing/einvoicing');
+				$this->model_einvoicing_einvoicing->install();
+
+				$einvoicing_group = $this->db->query("SELECT permission FROM `" . DB_PREFIX . "user_group` WHERE user_group_id = 1");
+
+				if ($einvoicing_group->num_rows) {
+					$einvoicing_perm = unserialize($einvoicing_group->row['permission']);
+
+					if (is_array($einvoicing_perm) && isset($einvoicing_perm['access']) && isset($einvoicing_perm['modify'])) {
+						$einvoicing_perm_changed = false;
+
+						foreach (array('access', 'modify') as $einvoicing_type) {
+							if (!in_array('einvoicing/einvoicing', $einvoicing_perm[$einvoicing_type])) {
+								$einvoicing_perm[$einvoicing_type][] = 'einvoicing/einvoicing';
+								$einvoicing_perm_changed = true;
+							}
+						}
+
+						if ($einvoicing_perm_changed) {
+							$this->db->query("UPDATE `" . DB_PREFIX . "user_group` SET permission = '" . $this->db->escape(serialize($einvoicing_perm)) . "' WHERE user_group_id = 1");
+						}
+					}
+				}
+			} catch (Exception $einvoicing_install_exception) {
+				// No interrumpir la carga del admin; se reintenta en la siguiente carga.
+			}
+
+			if ($this->user->hasPermission('access', 'einvoicing/einvoicing')) {
+				$sales[] = array(
+					'name' => $this->language->get('text_einvoicing'),
+					'href' => $this->url->link('einvoicing/einvoicing', 'token=' . $this->session->data['token'], 'SSL'),
+					'children' => array()
+				);
+			}
+
+			]]></add>
+		</operation>
+	</file>
+
+	<file name="admin/language/es_ES/common/header.php">
+		<operation error="skip">
+			<search position="after"><![CDATA[// Text]]></search>
+			<add><![CDATA[
+$_['text_einvoicing'] = 'Factura electr&oacute;nica';
+]]></add>
+		</operation>
+	</file>
+
+	<file name="admin/language/en-gb/common/header.php">
+		<operation error="skip">
+			<search position="after"><![CDATA[// Text]]></search>
+			<add><![CDATA[
+$_['text_einvoicing'] = 'E-invoicing';
+]]></add>
+		</operation>
+	</file>
+
+	<file name="admin/controller/sale/invoice.php">
+		<!-- Generacion automatica al crear la factura (no hace nada si el modulo no esta activo). -->
+		<operation error="skip">
+			<search position="after"><![CDATA[$new_invoice_id = $this->model_sale_invoice->addInvoice($this->request->post);]]></search>
+			<add><![CDATA[
+				$this->load->model('einvoicing/einvoicing');
+				$this->model_einvoicing_einvoicing->autoGenerate($new_invoice_id);
+]]></add>
+		</operation>
+
+		<!-- "Anular" crea una factura negativa: se emite como abono (tipo 381) de la original. -->
+		<operation error="skip">
+			<search position="after"><![CDATA[$negative_invoice_id = $this->model_sale_invoice->createNegativeInvoice($invoice_id);]]></search>
+			<add><![CDATA[				if ($negative_invoice_id) {
+					$this->load->model('einvoicing/einvoicing');
+					$this->model_einvoicing_einvoicing->autoGenerate($negative_invoice_id, (int)$invoice_id);
+				}
+]]></add>
+		</operation>
+
+		<!-- Ficha: pestana Factura electronica -->
+		<operation error="skip">
+			<search position="after"><![CDATA[$this->data['tab_receipts'] = $this->language->get('tab_receipts');]]></search>
+			<add><![CDATA[
+				// Factura electronica EN 16931 (modulo eInvoicing): pestana de la ficha
+				$this->load->model('einvoicing/einvoicing');
+
+				$this->data['einvoicing_tab_einvoicing'] = $this->model_einvoicing_einvoicing->label('tab_einvoicing');
+				$this->data['einvoicing_text_info_generated'] = $this->model_einvoicing_einvoicing->label('text_info_generated');
+				$this->data['einvoicing_text_info_status'] = $this->model_einvoicing_einvoicing->label('text_info_status');
+				$this->data['einvoicing_text_info_profile'] = $this->model_einvoicing_einvoicing->label('text_info_profile');
+				$this->data['einvoicing_text_info_notice'] = $this->model_einvoicing_einvoicing->label('text_info_notice');
+				$this->data['einvoicing_button_regenerate_invoice'] = $this->model_einvoicing_einvoicing->label('button_regenerate_invoice');
+				$this->data['einvoicing_button_download_xml'] = $this->model_einvoicing_einvoicing->label('button_download_xml');
+
+				$einvoicing_info = $this->model_einvoicing_einvoicing->getInfo($invoice_id);
+
+				$this->data['einvoicing_generated'] = $einvoicing_info['generated'];
+				$this->data['einvoicing_status'] = $einvoicing_info['status'];
+				$this->data['einvoicing_profile'] = $einvoicing_info['profile'];
+				$this->data['einvoicing_notice'] = $einvoicing_info['valid'] ? '' : nl2br(htmlspecialchars($einvoicing_info['notice'], ENT_QUOTES, 'UTF-8'));
+				$this->data['einvoicing_has_xml'] = $einvoicing_info['has_xml'];
+				$this->data['einvoicing_xml'] = $this->url->link('einvoicing/einvoicing/xml', 'token=' . $this->session->data['token'] . '&invoice_id=' . (int)$invoice_id, 'SSL');
+]]></add>
+		</operation>
+	</file>
+
+	<!-- Generacion al convertir un albaran o un borrador en factura -->
+	<file name="admin/controller/sale/delivery.php">
+		<operation error="skip">
+			<search position="after"><![CDATA[$this->db->query("UPDATE " . DB_PREFIX . "delivery SET invoice_no = " . (int)$invoice_no . " WHERE delivery_id = " . (int)$delivery_id);]]></search>
+			<add><![CDATA[
+				$this->load->model('einvoicing/einvoicing');
+				$this->model_einvoicing_einvoicing->autoGenerate((int)$invoice_no);
+]]></add>
+		</operation>
+	</file>
+
+	<file name="admin/controller/sale/draft.php">
+		<operation error="skip">
+			<search position="after"><![CDATA[$new_invoice_id = $this->model_sale_invoice->addInvoice($data);]]></search>
+			<add><![CDATA[
+						$this->load->model('einvoicing/einvoicing');
+						$this->model_einvoicing_einvoicing->autoGenerate((int)$new_invoice_id);
+]]></add>
+		</operation>
+	</file>
+
+	<file name="admin/view/template/sale/invoice_info.tpl">
+		<operation error="skip">
+			<search position="after"><![CDATA[href="#tab-receipts"]]></search>
+			<add><![CDATA[				<li class="nav-item"><a class="nav-link" href="#tab-einvoicing" data-bs-toggle="tab"><?php echo $einvoicing_tab_einvoicing; ?></a></li>]]></add>
+		</operation>
+		<operation error="skip">
+			<search position="after" offset="1"><![CDATA[<div id="receipts" data-href=]]></search>
+			<add><![CDATA[<?php include(DIR_TEMPLATE . 'einvoicing/info_pane.tpl'); ?>]]></add>
+		</operation>
+		<operation error="skip">
+			<search position="after" offset="1"><![CDATA[include(DIR_TEMPLATE . 'sale/print_modal.tpl');]]></search>
+			<add><![CDATA[<?php include(DIR_TEMPLATE . 'einvoicing/info_script.tpl'); ?>]]></add>
+		</operation>
+	</file>
+</modification>
