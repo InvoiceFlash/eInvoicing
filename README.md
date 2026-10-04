@@ -110,3 +110,9 @@ Con un arnés PHP 8.3 sobre una BD temporal (borrada después) y modelos del nú
 
 **Sin probar** en un navegador ni dentro de una instalación real de InvoiceFlash, ni con las reglas
 Schematron propias de Peppol, ni contra un punto de acceso.
+
+## Licencia
+
+GNU GPL v3, la misma que InvoiceFlash (ver `LICENSE`). Las librerías de `system/vendor/einvoicing`
+(josemmo/einvoicing y josemmo/uxml) son MIT, compatible con la GPL, y conservan sus licencias
+(`LICENSE-josemmo-einvoicing`, `LICENSE-josemmo-uxml`).
