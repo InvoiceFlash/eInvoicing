@@ -96,21 +96,6 @@ Los ajustes van al grupo `einvoicing` de `setting`: `einvoicing_active`, `_prese
    Ajustes**: elegir perfil, activar y guardar.
 4. Los permisos de otros grupos de usuarios se dan en Sistema > Grupos de usuarios.
 
-## Pruebas hechas
-
-Con un arnés PHP 8.3 sobre una BD temporal (borrada después) y modelos del núcleo simulados:
-
-- factura con tres tipos de IVA, descuento, cuenta bancaria y nota; abono de la misma; factura exenta a
-  un cliente alemán; cliente sin país con esquema (usa el email); diferencia de redondeo;
-- errores esperados: cliente sin nombre, IVA que no existe en Impuestos;
-- los XML generados pasaron `EN16931-UBL-validation.xslt` (CEN 1.3.16) sin ningún fallo, y el mismo
-  validador detecta un total de IVA alterado a mano;
-- `einvoicing.xml` aplicado con vqmod a copias de los ficheros de InvoiceFlash-0.0.17, junto con
-  `ticketbai.xml`: cada operación casa una vez, los ficheros resultantes pasan `php -l`.
-
-**Sin probar** en un navegador ni dentro de una instalación real de InvoiceFlash, ni con las reglas
-Schematron propias de Peppol, ni contra un punto de acceso.
-
 ## Licencia
 
 GNU GPL v3, la misma que InvoiceFlash (ver `LICENSE`). Las librerías de `system/vendor/einvoicing`
